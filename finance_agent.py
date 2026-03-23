@@ -121,9 +121,64 @@ def get_mutual_fund_info(fund_name: str) -> str:
     except Exception as e:
         return f"Error fetching mutual fund details for '{fund_name}': {str(e)}"
 
+tools = [get_stock_price, calculate_compound_interest, get_mutual_fund_info]
+
+llm = ChatGroq(model="qwen/qwen3-32b", temperature=0.0)
+
+system_prompt = """You are a knowledgeable personal finance advisor for Indian investors.
+
+Your behavior:
+- Always use tools to get real data before giving advice
+- Be specific with numbers — never give vague answers
+- If the user asks about stocks, check the price first using the tool
+- If the user asks about investing, calculate actual returns using the tool
+- Always explain your reasoning after using a tool
+- Be concise but complete — no unnecessary padding
+- If you don't have data for something, say so honestly
+- CRITICAL: Never call more than one tool at the exact same time. Think step-by-step and use one tool sequentially."""
+
+agent = create_react_agent(model=llm, tools=tools, prompt=system_prompt)
+
+def ask_finance_agent(question: str) -> str:
+    print(f"\n{'='*55}")
+    print(f"Question: {question}")
+    print('='*55)
+
+    result = agent.invoke({
+        "messages": [("human", question)]
+    })
+
+    # result["messages"] is a list of all messages in the conversation:
+    # HumanMessage → AIMessage(tool_call) → ToolMessage → AIMessage(final)
+    # We want the last AIMessage which is the final answer.
+    final = result["messages"][-1]
+    return final.content
+
+
 
 # We can add a quick print to confirm tool is configured
+# if __name__ == "__main__":
+#     #print(f"Tool name: {get_stock_price.name}")
+#     #print(f"Tool description: {get_stock_price.description}")
+#     #print(calculate_compound_interest.invoke({"principal": 10000, "annual_rate": 12, "years": 10}))
+#     print(get_mutual_fund_info.invoke({"fund_name": "Motilal oswal midcap fund"}))
+
 if __name__ == "__main__":
-    print(f"Tool name: {get_stock_price.name}")
-    print(f"Tool description: {get_stock_price.description}")
-    print(calculate_compound_interest.invoke({"principal": 10000, "annual_rate": 12, "years": 10}))
+
+    # Test 1 — single tool call
+    answer = ask_finance_agent("What is the current price of Apple stock?")
+    print("\nAnswer:", answer)
+
+    # Test 2 — tool call + reasoning
+    answer = ask_finance_agent(
+        "If I invest ₹50,000 in an index fund today, "
+        "how much will I have in 15 years?"
+    )
+    print("\nAnswer:", answer)
+
+    # Test 3 — multi tool call (agent decides to call 2 tools)
+    answer = ask_finance_agent(
+        "I have ₹1,00,000 to invest. Should I put it in TSLA stock "
+        "or an ELSS mutual fund? Show me the numbers."
+    )
+    print("\nAnswer:", answer)
